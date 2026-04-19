@@ -68,7 +68,6 @@ fn accumulate_arithmetic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_
 
 /// Accumulate the two permutation subrelations (indices 2 and 3).
 fn accumulate_permutation_relation(
-    _env: &Env,
     p: &[Fr],
     rp: &RelationParameters,
     evals: &mut [Fr],
@@ -109,7 +108,6 @@ fn accumulate_permutation_relation(
 
 /// Accumulate the two lookup log-derivative subrelations (indices 4 and 5).
 fn accumulate_log_derivative_lookup_relation(
-    _env: &Env,
     p: &[Fr],
     rp: &RelationParameters,
     evals: &mut [Fr],
@@ -338,7 +336,7 @@ fn accumulate_auxillary_relation(
 }
 
 /// Accumulate Poseidon external subrelations (indices 18..21).
-fn accumulate_poseidon_external_relation(_env: &Env, p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
+fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
     let s1 = wire(p, Wire::Wl) + wire(p, Wire::Ql);
     let s2 = wire(p, Wire::Wr) + wire(p, Wire::Qr);
     let s3 = wire(p, Wire::Wo) + wire(p, Wire::Qo);
@@ -409,14 +407,12 @@ pub fn accumulate_relation_evaluations(
 
     accumulate_arithmetic_relation(env, purported_evaluations, &mut evaluations, pow_partial_eval.clone());
     accumulate_permutation_relation(
-        env,
         purported_evaluations,
         rp,
         &mut evaluations,
         pow_partial_eval.clone(),
     );
     accumulate_log_derivative_lookup_relation(
-        env,
         purported_evaluations,
         rp,
         &mut evaluations,
@@ -432,7 +428,6 @@ pub fn accumulate_relation_evaluations(
         pow_partial_eval.clone(),
     );
     accumulate_poseidon_external_relation(
-        env,
         purported_evaluations,
         &mut evaluations,
         pow_partial_eval.clone(),
