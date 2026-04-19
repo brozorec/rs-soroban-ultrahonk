@@ -8,10 +8,7 @@ description = "Rust verifier for UltraHonk proofs"
 repository  = "https://github.com/yugocabrio/rs-soroban-ultrahonk"
 
 [dependencies]
-
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
-
-lazy_static = { version = "1.4", optional = true }
 soroban-sdk = { version = "26.0.0-rc.1", default-features = false }
 
 [dev-dependencies]
@@ -19,12 +16,6 @@ soroban-sdk = { version = "26.0.0-rc.1", default-features = false, features = ["
 
 [features]
 default = ["alloc"]
-std = [
-    "hex/std",
-    "lazy_static",
-]
+std = ["hex/std"]
 trace = []
-
-alloc = [
-    "hex/alloc",
-]
+alloc = ["hex/alloc"]

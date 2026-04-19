@@ -5,14 +5,22 @@ edition = "2021"
 
 [dependencies]
 rs-soroban-ultrahonk = { path = "../.." }
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246", default-features = false, features = ["alloc"] }
-soroban-poseidon = "25.0.0-rc.1"
+soroban-sdk = { version = "26.0.0-rc.1", default-features = false, features = ["alloc"] }
+soroban-poseidon = { git = "https://github.com/stellar/rs-soroban-poseidon.git", branch = "main" }
 ultrahonk_soroban_verifier = { path = "../../ultrahonk-soroban-verifier", default-features = false }
 
 [dev-dependencies]
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246", features = ["testutils", "alloc"] }
-soroban-env-host = "25.0.0"
+soroban-sdk = { version = "26.0.0-rc.1", features = ["testutils", "alloc"] }
+soroban-env-host = "26.1.2"
 num-bigint = "0.4"
+
+# soroban-poseidon (git main, v26.0.0-rc.1) depends on soroban-sdk via
+# a git rev that has `Bn254Fr` / `Bls12381Fr` types.  The crates.io
+# soroban-sdk 26.0.0-rc.1 renamed those to `Fr` / `Fp`, making the two
+# API-incompatible.  We redirect the crates.io dependency to the same
+# git rev so every crate in the tree resolves to one soroban-sdk.
+[patch.crates-io]
+soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "3b031847eb043856cc5bcad45bd5a6512370cd16" }
 
 [lib]
 name = "tornado_classic_contracts"
@@ -28,5 +36,5 @@ name = "populate_publics"
 path = "examples/populate_publics.rs"
 required-features = ["std"]
 
-[patch.crates-io]
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246" }
+[profile.release]
+overflow-checks = true

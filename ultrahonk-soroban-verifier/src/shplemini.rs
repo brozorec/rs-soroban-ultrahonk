@@ -1,6 +1,5 @@
 //! Shplemini batch-opening verifier for BN254
-use crate::ec::helpers::negate;
-use crate::ec::{g1_msm, pairing_check};
+use crate::ec::{g1_msm, g1_negate, pairing_check};
 use crate::field::{batch_inverse, Fr};
 use crate::trace;
 use crate::types::{
@@ -219,7 +218,7 @@ pub fn verify_shplemini(
 
     // 12) MSM + pairing
     let p0 = g1_msm(env, &coms, &scalars)?;
-    let p1 = negate(env, &proof.kzg_quotient);
+    let p1 = g1_negate(env, &proof.kzg_quotient);
     if pairing_check(env, &p0, &p1) {
         Ok(())
     } else {

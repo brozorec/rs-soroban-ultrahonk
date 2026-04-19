@@ -1,7 +1,7 @@
 use crate::{field::Fr, types::G1Point};
 use soroban_sdk::{
     crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr as Bn254Fr},
-    BytesN, Env, Vec,
+    Env, Vec,
 };
 
 const RHS_G2_BYTES: [u8; 128] = [
@@ -27,28 +27,22 @@ const LHS_G2_BYTES: [u8; 128] = [
 ];
 
 #[inline(always)]
-fn fr_to_bn254(env: &Env, fr: &Fr) -> Bn254Fr {
-    Bn254Fr::from_bytes(BytesN::from_array(env, &fr.to_bytes()))
-}
-
-#[inline(always)]
 fn g1_from_point(env: &Env, pt: &G1Point) -> Bn254G1Affine {
     Bn254G1Affine::from_array(env, &pt.to_bytes())
 }
 
 #[inline(always)]
-pub fn rhs_g2_affine(env: &Env) -> Bn254G2Affine {
+fn rhs_g2_affine(env: &Env) -> Bn254G2Affine {
     Bn254G2Affine::from_array(env, &RHS_G2_BYTES)
 }
 
 #[inline(always)]
-pub fn lhs_g2_affine(env: &Env) -> Bn254G2Affine {
+fn lhs_g2_affine(env: &Env) -> Bn254G2Affine {
     Bn254G2Affine::from_array(env, &LHS_G2_BYTES)
 }
 
 /// Multi-scalar multiplication on G1: ∑ sᵢ·Cᵢ
-/// Uses the native bn254_g1_msm host function (CAP-0080) for a single
-/// host call instead of N individual g1_mul + g1_add calls.
+/// Uses the native bn254_g1_msm host function (CAP-0080).
 #[inline(always)]
 pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affine, &'static str> {
     if coms.len() != scalars.len() {
@@ -58,7 +52,7 @@ pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affi
     let mut scalar_vec: Vec<Bn254Fr> = Vec::new(env);
     for (c, s) in coms.iter().zip(scalars.iter()) {
         points.push_back(g1_from_point(env, c));
-        scalar_vec.push_back(fr_to_bn254(env, s));
+        scalar_vec.push_back(s.0.clone());
     }
     Ok(env.crypto().bn254().g1_msm(points, scalar_vec))
 }
@@ -75,16 +69,8 @@ pub fn pairing_check(env: &Env, p0: &Bn254G1Affine, p1: &Bn254G1Affine) -> bool 
     env.crypto().bn254().pairing_check(g1s, g2s)
 }
 
-pub mod helpers {
-    use super::*;
-
-    #[inline(always)]
-    pub fn to_affine(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-        g1_from_point(env, pt)
-    }
-
-    #[inline(always)]
-    pub fn negate(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-        -g1_from_point(env, pt)
-    }
+/// Negate a G1 point: (x, y) → (x, -y)
+#[inline(always)]
+pub fn g1_negate(env: &Env, pt: &G1Point) -> Bn254G1Affine {
+    -g1_from_point(env, pt)
 }
