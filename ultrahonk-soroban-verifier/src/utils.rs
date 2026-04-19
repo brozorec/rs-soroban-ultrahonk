@@ -7,12 +7,7 @@ use crate::types::{
 };
 use crate::PROOF_BYTES;
 use core::array;
-use soroban_sdk::Bytes;
-
-/// Convert a 32-byte big-endian array into an Fr.
-fn bytes32_to_fr(bytes: &[u8; 32]) -> Fr {
-    Fr::from_bytes(bytes)
-}
+use soroban_sdk::{Bytes, Env};
 
 /// Split a 32-byte big-endian field element into (low136, high) limbs.
 pub fn coord_to_halves_be(coord: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
@@ -38,33 +33,33 @@ fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
     out
 }
 
+fn bytes_to_g1_proof_point(bytes: &Bytes, cur: &mut u32) -> G1Point {
+    let x0 = read_bytes::<32>(bytes, cur);
+    let x1 = read_bytes::<32>(bytes, cur);
+    let y0 = read_bytes::<32>(bytes, cur);
+    let y1 = read_bytes::<32>(bytes, cur);
+    let x = combine_limbs(&x0, &x1);
+    let y = combine_limbs(&y0, &y1);
+    G1Point { x, y }
+}
+
+fn bytes_to_fr(env: &Env, bytes: &Bytes, cur: &mut u32) -> Fr {
+    let arr = read_bytes::<32>(bytes, cur);
+    Fr::from_bytes(env, &arr)
+}
+
 /// Load a Proof from a byte array.
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
 pub fn load_proof(proof_bytes: &Bytes) -> Proof {
     assert_eq!(proof_bytes.len() as usize, PROOF_BYTES, "proof bytes len");
+    let env = proof_bytes.env();
     let mut boundary = 0u32;
-
-    fn bytes_to_g1_proof_point(bytes: &Bytes, cur: &mut u32) -> G1Point {
-        let x0 = read_bytes::<32>(bytes, cur);
-        let x1 = read_bytes::<32>(bytes, cur);
-        let y0 = read_bytes::<32>(bytes, cur);
-        let y1 = read_bytes::<32>(bytes, cur);
-        let x = combine_limbs(&x0, &x1);
-        let y = combine_limbs(&y0, &y1);
-        G1Point { x, y }
-    }
-
-    // Helper: bytesToFr (read next 32 bytes as Fr)
-    fn bytes_to_fr(bytes: &Bytes, cur: &mut u32) -> Fr {
-        let arr = read_bytes::<32>(bytes, cur);
-        bytes32_to_fr(&arr)
-    }
 
     // 0) pairing point object
     let pairing_point_object: [Fr; PAIRING_POINTS_SIZE] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
+        array::from_fn(|_| bytes_to_fr(env, proof_bytes, &mut boundary));
 
     // 1) w1, w2, w3
     let w1 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
@@ -83,17 +78,14 @@ pub fn load_proof(proof_bytes: &Bytes) -> Proof {
     let z_perm = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
 
     // 5) sumcheck_univariates
-    let mut sumcheck_univariates =
-        [[Fr::zero(); BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N];
-    for r in 0..CONST_PROOF_SIZE_LOG_N {
-        for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-            sumcheck_univariates[r][i] = bytes_to_fr(proof_bytes, &mut boundary);
-        }
-    }
+    let sumcheck_univariates: [[Fr; BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N] =
+        array::from_fn(|_| {
+            array::from_fn(|_| bytes_to_fr(env, proof_bytes, &mut boundary))
+        });
 
     // 6) sumcheck_evaluations
     let sumcheck_evaluations: [Fr; NUMBER_OF_ENTITIES] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
+        array::from_fn(|_| bytes_to_fr(env, proof_bytes, &mut boundary));
 
     // 7) gemini_fold_comms
     let gemini_fold_comms: [G1Point; CONST_PROOF_SIZE_LOG_N - 1] =
@@ -101,7 +93,7 @@ pub fn load_proof(proof_bytes: &Bytes) -> Proof {
 
     // 8) gemini_a_evaluations
     let gemini_a_evaluations: [Fr; CONST_PROOF_SIZE_LOG_N] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
+        array::from_fn(|_| bytes_to_fr(env, proof_bytes, &mut boundary));
 
     // 9) shplonk_q, kzg_quotient
     let shplonk_q = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
@@ -135,21 +127,17 @@ pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
         return None;
     }
 
-    fn read_u64(bytes: &Bytes, idx: &mut u32) -> u64 {
-        u64::from_be_bytes(read_bytes::<8>(bytes, idx))
-    }
+    let mut idx = 0u32;
+    let circuit_size = u64::from_be_bytes(read_bytes::<8>(bytes, &mut idx));
+    let log_circuit_size = u64::from_be_bytes(read_bytes::<8>(bytes, &mut idx));
+    let public_inputs_size = u64::from_be_bytes(read_bytes::<8>(bytes, &mut idx));
+    let _pub_inputs_offset = u64::from_be_bytes(read_bytes::<8>(bytes, &mut idx));
+
     fn read_point(bytes: &Bytes, idx: &mut u32) -> Option<G1Point> {
         let x = read_bytes::<32>(bytes, idx);
         let y = read_bytes::<32>(bytes, idx);
-        // Curve, subgroup checks are executed in the Soroban host.
         Some(G1Point { x, y })
     }
-
-    let mut idx = 0u32;
-    let circuit_size = read_u64(bytes, &mut idx);
-    let log_circuit_size = read_u64(bytes, &mut idx);
-    let public_inputs_size = read_u64(bytes, &mut idx);
-    let _pub_inputs_offset = read_u64(bytes, &mut idx);
 
     let qm = read_point(bytes, &mut idx)?;
     let qc = read_point(bytes, &mut idx)?;

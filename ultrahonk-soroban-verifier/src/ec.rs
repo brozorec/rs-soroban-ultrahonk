@@ -47,23 +47,20 @@ pub fn lhs_g2_affine(env: &Env) -> Bn254G2Affine {
 }
 
 /// Multi-scalar multiplication on G1: ∑ sᵢ·Cᵢ
+/// Uses the native bn254_g1_msm host function (CAP-0080) for a single
+/// host call instead of N individual g1_mul + g1_add calls.
 #[inline(always)]
 pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affine, &'static str> {
     if coms.len() != scalars.len() {
         return Err("msm len mismatch");
     }
-    let bn = env.crypto().bn254();
-    let mut acc = Bn254G1Affine::from_array(env, &G1Point::infinity().to_bytes());
+    let mut points: Vec<Bn254G1Affine> = Vec::new(env);
+    let mut scalar_vec: Vec<Bn254Fr> = Vec::new(env);
     for (c, s) in coms.iter().zip(scalars.iter()) {
-        if s.is_zero() {
-            continue;
-        }
-        let p = g1_from_point(env, c);
-        let scalar = fr_to_bn254(env, s);
-        let term = bn.g1_mul(&p, &scalar);
-        acc = bn.g1_add(&acc, &term);
+        points.push_back(g1_from_point(env, c));
+        scalar_vec.push_back(fr_to_bn254(env, s));
     }
-    Ok(acc)
+    Ok(env.crypto().bn254().g1_msm(points, scalar_vec))
 }
 
 /// Pairing product check e(P0, rhs_g2) * e(P1, lhs_g2) == 1

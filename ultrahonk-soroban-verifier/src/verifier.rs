@@ -81,17 +81,18 @@ impl UltraHonkVerifier {
 
         // 4) Public delta
         t.rel_params.public_inputs_delta = Self::compute_public_input_delta(
+            &self.env,
             public_inputs_bytes,
             &proof.pairing_point_object,
-            t.rel_params.beta,
-            t.rel_params.gamma,
+            t.rel_params.beta.clone(),
+            t.rel_params.gamma.clone(),
             pub_inputs_offset,
             self.vk.circuit_size,
         )
         .map_err(VerifyError::InvalidInput)?;
 
         // 5) Sum-check
-        verify_sumcheck(&proof, &t, &self.vk).map_err(VerifyError::SumcheckFailed)?;
+        verify_sumcheck(&self.env, &proof, &t, &self.vk).map_err(VerifyError::SumcheckFailed)?;
 
         // 6) Shplonk
         verify_shplemini(&self.env, &proof, &self.vk, &t).map_err(VerifyError::ShplonkFailed)?;
@@ -100,6 +101,7 @@ impl UltraHonkVerifier {
     }
 
     fn compute_public_input_delta(
+        env: &Env,
         public_inputs: &Bytes,
         pairing_point_object: &[Fr],
         beta: Fr,
@@ -107,28 +109,28 @@ impl UltraHonkVerifier {
         offset: u64,
         n: u64,
     ) -> Result<Fr, &'static str> {
-        let mut numerator = Fr::one();
-        let mut denominator = Fr::one();
+        let mut numerator = Fr::one(env);
+        let mut denominator = Fr::one(env);
 
-        let mut numerator_acc = gamma + beta * Fr::from_u64(n + offset);
-        let mut denominator_acc = gamma - beta * Fr::from_u64(offset + 1);
+        let mut numerator_acc = gamma.clone() + beta.clone() * Fr::from_u64(env, n + offset);
+        let mut denominator_acc = gamma - beta.clone() * Fr::from_u64(env, offset + 1);
 
         let mut idx = 0u32;
         while idx < public_inputs.len() {
             let mut arr = [0u8; 32];
             public_inputs.slice(idx..idx + 32).copy_into_slice(&mut arr);
-            let public_input = Fr::from_bytes(&arr);
-            numerator = numerator * (numerator_acc + public_input);
-            denominator = denominator * (denominator_acc + public_input);
-            numerator_acc = numerator_acc + beta;
-            denominator_acc = denominator_acc - beta;
+            let public_input = Fr::from_bytes(env, &arr);
+            numerator = numerator * (numerator_acc.clone() + public_input.clone());
+            denominator = denominator * (denominator_acc.clone() + public_input);
+            numerator_acc = numerator_acc + beta.clone();
+            denominator_acc = denominator_acc - beta.clone();
             idx += 32;
         }
         for public_input in pairing_point_object {
-            numerator = numerator * (numerator_acc + *public_input);
-            denominator = denominator * (denominator_acc + *public_input);
-            numerator_acc = numerator_acc + beta;
-            denominator_acc = denominator_acc - beta;
+            numerator = numerator * (numerator_acc.clone() + public_input.clone());
+            denominator = denominator * (denominator_acc.clone() + public_input.clone());
+            numerator_acc = numerator_acc + beta.clone();
+            denominator_acc = denominator_acc - beta.clone();
         }
         let denominator_inv = denominator
             .inverse()
