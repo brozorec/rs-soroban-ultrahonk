@@ -1,11 +1,14 @@
 //! Utilities for loading Proof and VerificationKey, plus byte↔field/point conversion.
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::field::Fr;
 use crate::types::{
     G1Point, Proof, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N,
     NUMBER_OF_ENTITIES, PAIRING_POINTS_SIZE,
 };
-use crate::PROOF_BYTES;
+use crate::{BB_PROOF_BYTES, PROOF_BYTES};
 use core::array;
 use soroban_sdk::{Bytes, Env};
 
@@ -34,12 +37,8 @@ fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
 }
 
 fn bytes_to_g1_proof_point(bytes: &Bytes, cur: &mut u32) -> G1Point {
-    let x0 = read_bytes::<32>(bytes, cur);
-    let x1 = read_bytes::<32>(bytes, cur);
-    let y0 = read_bytes::<32>(bytes, cur);
-    let y1 = read_bytes::<32>(bytes, cur);
-    let x = combine_limbs(&x0, &x1);
-    let y = combine_limbs(&y0, &y1);
+    let x = read_bytes::<32>(bytes, cur);
+    let y = read_bytes::<32>(bytes, cur);
     G1Point { x, y }
 }
 
@@ -48,10 +47,11 @@ fn bytes_to_fr(env: &Env, bytes: &Bytes, cur: &mut u32) -> Fr {
     Fr::from_bytes(env, &arr)
 }
 
-/// Load a Proof from a byte array.
+/// Load a Proof from a compact byte array (see [`compact_proof`]).
 ///
-/// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
-/// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
+/// G1 points are stored as two 32-byte coordinates (x, y) = 64 bytes each.
+/// BB's native format uses a 4×32 limb-split encoding; call [`compact_proof`]
+/// to convert BB output before passing it here.
 pub fn load_proof(proof_bytes: &Bytes) -> Proof {
     assert_eq!(proof_bytes.len() as usize, PROOF_BYTES, "proof bytes len");
     let env = proof_bytes.env();
@@ -199,4 +199,59 @@ pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
         lagrange_first,
         lagrange_last,
     })
+}
+
+/// Convert a BB-format proof (limb-split G1 points, 14592 bytes) into compact
+/// format (full 32-byte coordinates, 12224 bytes).
+///
+/// BB encodes each G1 coordinate as two 32-byte limbs (lo136, hi118).
+/// This function combines each pair into a single 32-byte big-endian value,
+/// halving the per-point footprint from 128 to 64 bytes. Field elements (Fr)
+/// are already 32 bytes and are copied unchanged.
+pub fn compact_proof(bb_proof: &[u8]) -> Vec<u8> {
+    assert_eq!(bb_proof.len(), BB_PROOF_BYTES, "expected BB proof length");
+
+    struct Compactor<'a> {
+        src: &'a [u8],
+        out: Vec<u8>,
+        pos: usize,
+    }
+
+    impl<'a> Compactor<'a> {
+        fn copy_fr(&mut self, n: usize) {
+            let bytes = n * 32;
+            self.out.extend_from_slice(&self.src[self.pos..self.pos + bytes]);
+            self.pos += bytes;
+        }
+
+        fn compact_g1(&mut self) {
+            let p = self.pos;
+            self.out.extend_from_slice(&combine_limbs(
+                self.src[p..p + 32].try_into().unwrap(),
+                self.src[p + 32..p + 64].try_into().unwrap(),
+            ));
+            self.out.extend_from_slice(&combine_limbs(
+                self.src[p + 64..p + 96].try_into().unwrap(),
+                self.src[p + 96..p + 128].try_into().unwrap(),
+            ));
+            self.pos += 128;
+        }
+    }
+
+    let mut c = Compactor { src: bb_proof, out: Vec::with_capacity(PROOF_BYTES), pos: 0 };
+
+    c.copy_fr(16);                                             // pairing_point_object
+    for _ in 0..3 { c.compact_g1(); }                         // w1, w2, w3
+    for _ in 0..2 { c.compact_g1(); }                         // lookup_read_counts, lookup_read_tags
+    c.compact_g1();                                             // w4
+    for _ in 0..2 { c.compact_g1(); }                         // lookup_inverses, z_perm
+    c.copy_fr(BATCHED_RELATION_PARTIAL_LENGTH * CONST_PROOF_SIZE_LOG_N); // sumcheck_univariates
+    c.copy_fr(NUMBER_OF_ENTITIES);                             // sumcheck_evaluations
+    for _ in 0..CONST_PROOF_SIZE_LOG_N - 1 { c.compact_g1(); } // gemini_fold_comms
+    c.copy_fr(CONST_PROOF_SIZE_LOG_N);                         // gemini_a_evaluations
+    for _ in 0..2 { c.compact_g1(); }                         // shplonk_q, kzg_quotient
+
+    debug_assert_eq!(c.pos, BB_PROOF_BYTES);
+    debug_assert_eq!(c.out.len(), PROOF_BYTES);
+    c.out
 }
