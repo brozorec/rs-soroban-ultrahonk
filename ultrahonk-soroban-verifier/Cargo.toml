@@ -9,10 +9,10 @@ repository  = "https://github.com/yugocabrio/rs-soroban-ultrahonk"
 
 [dependencies]
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
-soroban-sdk = { version = "26.0.0-rc.1", default-features = false }
+soroban-sdk = { version = "26.0.0", default-features = false }
 
 [dev-dependencies]
-soroban-sdk = { version = "26.0.0-rc.1", default-features = false, features = ["testutils"] }
+soroban-sdk = { version = "26.0.0", default-features = false, features = ["testutils"] }
 
 [features]
 default = ["alloc"]

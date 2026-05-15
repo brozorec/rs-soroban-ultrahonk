@@ -1,5 +1,5 @@
 use soroban_sdk::{
-    crypto::bn254::Fr as SdkFr,
+    crypto::bn254::Bn254Fr as SdkFr,
     BytesN, Env, U256,
 };
 use core::ops::{Add, Mul, Neg, Sub};
