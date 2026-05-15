@@ -52,8 +52,8 @@ const BARY_BYTES: [[u8; 32]; BATCHED_RELATION_PARTIAL_LENGTH] = [
 /// Check if the sum of two univariates equals the target value
 #[inline(always)]
 fn check_sum(round_univariate: &[Fr], round_target: &Fr) -> bool {
-    let total_sum = round_univariate[0].clone() + round_univariate[1].clone();
-    total_sum == *round_target
+    let total_sum = &round_univariate[0] + &round_univariate[1];
+    &total_sum == round_target
 }
 
 /// Calculate next target value for the sum-check using batch inversion.
@@ -68,8 +68,8 @@ fn compute_next_target_sum(
         core::array::from_fn(|_| Fr::zero(env));
     let mut b_poly = Fr::one(env);
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        let diff = round_challenge.clone() - Fr::from_u64(env, i as u64);
-        b_poly = b_poly * diff.clone();
+        let diff = round_challenge - Fr::from_u64(env, i as u64);
+        b_poly = b_poly * &diff;
         denoms[i] = Fr::from_bytes(env, &BARY_BYTES[i]) * diff;
     }
 
@@ -82,7 +82,7 @@ fn compute_next_target_sum(
     // Σ u_i * inv_denom_i
     let mut acc = Fr::zero(env);
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        acc = acc + (round_univariate[i].clone() * inv_denoms[i].clone());
+        acc = acc + &round_univariate[i] * &inv_denoms[i];
     }
 
     Ok(b_poly * acc)
@@ -95,7 +95,7 @@ fn partially_evaluate_pow(
     pow_partial_evaluation: Fr,
     round_challenge: &Fr,
 ) -> Fr {
-    pow_partial_evaluation * (Fr::one(env) + round_challenge.clone() * (gate_challenge.clone() - Fr::one(env)))
+    pow_partial_evaluation * (Fr::one(env) + round_challenge * (gate_challenge - Fr::one(env)))
 }
 
 pub fn verify_sumcheck(

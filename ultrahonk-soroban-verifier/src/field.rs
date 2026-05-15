@@ -92,7 +92,7 @@ pub fn batch_inverse(vals: &[Fr], out: &mut [Fr]) -> Result<(), &'static str> {
     // 1) Build prefix products in `out`: out[i] = vals[0] * vals[1] * ... * vals[i]
     out[0] = vals[0].clone();
     for i in 1..n {
-        out[i] = out[i - 1].clone() * vals[i].clone();
+        out[i] = &out[i - 1] * &vals[i];
     }
 
     // 2) Invert the total product
@@ -102,35 +102,59 @@ pub fn batch_inverse(vals: &[Fr], out: &mut [Fr]) -> Result<(), &'static str> {
 
     // 3) Sweep back to recover individual inverses
     for i in (1..n).rev() {
-        out[i] = inv_acc.clone() * out[i - 1].clone();
-        inv_acc = inv_acc * vals[i].clone();
+        out[i] = &inv_acc * &out[i - 1];
+        inv_acc = inv_acc * &vals[i];
     }
     out[0] = inv_acc;
     Ok(())
 }
 
-impl Add for Fr {
-    type Output = Fr;
-    fn add(self, rhs: Fr) -> Fr {
-        Fr(self.0 + rhs.0)
-    }
+macro_rules! impl_fr_binop {
+    ($trait:ident, $method:ident, $host_method:ident) => {
+        impl $trait<Fr> for Fr {
+            type Output = Fr;
+            #[inline(always)]
+            fn $method(self, rhs: Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_method(&self.0, &rhs.0))
+            }
+        }
+        impl<'a> $trait<&'a Fr> for Fr {
+            type Output = Fr;
+            #[inline(always)]
+            fn $method(self, rhs: &'a Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_method(&self.0, &rhs.0))
+            }
+        }
+        impl<'a> $trait<Fr> for &'a Fr {
+            type Output = Fr;
+            #[inline(always)]
+            fn $method(self, rhs: Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_method(&self.0, &rhs.0))
+            }
+        }
+        impl<'a, 'b> $trait<&'b Fr> for &'a Fr {
+            type Output = Fr;
+            #[inline(always)]
+            fn $method(self, rhs: &'b Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_method(&self.0, &rhs.0))
+            }
+        }
+    };
 }
 
-impl Sub for Fr {
-    type Output = Fr;
-    fn sub(self, rhs: Fr) -> Fr {
-        Fr(self.0 - rhs.0)
-    }
-}
-
-impl Mul for Fr {
-    type Output = Fr;
-    fn mul(self, rhs: Fr) -> Fr {
-        Fr(self.0 * rhs.0)
-    }
-}
+impl_fr_binop!(Add, add, fr_add);
+impl_fr_binop!(Sub, sub, fr_sub);
+impl_fr_binop!(Mul, mul, fr_mul);
 
 impl Neg for Fr {
+    type Output = Fr;
+    fn neg(self) -> Fr {
+        let env = self.0.env().clone();
+        Fr::zero(&env) - self
+    }
+}
+
+impl<'a> Neg for &'a Fr {
     type Output = Fr;
     fn neg(self) -> Fr {
         Fr::zero(self.0.env()) - self
