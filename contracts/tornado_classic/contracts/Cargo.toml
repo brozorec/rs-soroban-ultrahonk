@@ -8,12 +8,12 @@ publish = false
 [dependencies]
 rs-soroban-ultrahonk = { path = "../../rs-soroban-ultrahonk" }
 soroban-sdk = { workspace = true, features = ["alloc"] }
-soroban-poseidon = "28.0.0"
+soroban-poseidon = "30.0.0-rc.1"
 ultrahonk_soroban_verifier = { path = "../../../crates/ultrahonk-soroban-verifier", default-features = false }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
-soroban-env-host = "28.0.2"
+soroban-env-host = "30.0.0"
 num-bigint = "0.4"
 
 [lib]
